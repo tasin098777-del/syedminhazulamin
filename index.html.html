@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyPDF Tools</title>
+
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Segoe UI;}
+body{
+    background:linear-gradient(135deg,#1e3c72,#2a5298);
+    color:#fff;
+    min-height:100vh;
+    padding:20px;
+}
+.container{
+    max-width:1100px;
+    margin:auto;
+    background:rgba(255,255,255,0.08);
+    backdrop-filter:blur(20px);
+    border-radius:20px;
+    padding:25px;
+}
+h1{text-align:center;margin-bottom:25px;}
+.tools{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+    gap:20px;
+}
+.card{
+    background:rgba(255,255,255,0.1);
+    padding:20px;
+    border-radius:15px;
+    text-align:center;
+}
+input{margin:10px 0;}
+button{
+    padding:8px 12px;
+    border:none;
+    border-radius:8px;
+    background:#fff;color:#000;
+    font-weight:bold;
+    cursor:pointer;
+}
+button:hover{background:#000;color:#fff;}
+</style>
+</head>
+<body>
+
+<div class="container">
+<h1>📄 MyPDF Tools</h1>
+
+<div class="tools">
+
+<!-- Merge PDF -->
+<div class="card">
+<h3>Merge PDF</h3>
+<input type="file" id="mergeFiles" multiple accept="application/pdf">
+<button onclick="mergePDF()">Merge & Download</button>
+</div>
+
+<!-- Split PDF -->
+<div class="card">
+<h3>Split PDF</h3>
+<input type="file" id="splitFile" accept="application/pdf">
+<button onclick="splitPDF()">Split All Pages</button>
+</div>
+
+<!-- PDF to Image -->
+<div class="card">
+<h3>PDF to Image</h3>
+<input type="file" id="pdfToImg" accept="application/pdf">
+<button onclick="pdfToImage()">Convert</button>
+<div id="imgPreview"></div>
+</div>
+
+<!-- Image to PDF -->
+<div class="card">
+<h3>Image to PDF</h3>
+<input type="file" id="imgToPdf" multiple accept="image/*">
+<button onclick="imageToPDF()">Convert & Download</button>
+</div>
+
+</div>
+</div>
+
+<script>
+const { PDFDocument } = PDFLib;
+
+// Merge PDFs
+async function mergePDF(){
+    const files=document.getElementById("mergeFiles").files;
+    if(files.length<2) return alert("Select at least 2 PDFs");
+
+    const mergedPdf=await PDFDocument.create();
+
+    for(let file of files){
+        const bytes=await file.arrayBuffer();
+        const pdf=await PDFDocument.load(bytes);
+        const pages=await mergedPdf.copyPages(pdf,pdf.getPageIndices());
+        pages.forEach(p=>mergedPdf.addPage(p));
+    }
+
+    const mergedBytes=await mergedPdf.save();
+    downloadFile(mergedBytes,"merged.pdf");
+}
+
+// Split PDF
+async function splitPDF(){
+    const file=document.getElementById("splitFile").files[0];
+    if(!file) return alert("Select PDF");
+
+    const bytes=await file.arrayBuffer();
+    const pdf=await PDFDocument.load(bytes);
+
+    for(let i=0;i<pdf.getPageCount();i++){
+        const newPdf=await PDFDocument.create();
+        const [page]=await newPdf.copyPages(pdf,[i]);
+        newPdf.addPage(page);
+        const bytes=await newPdf.save();
+        downloadFile(bytes,`page-${i+1}.pdf`);
+    }
+}
+
+// PDF to Image
+async function pdfToImage(){
+    const file=document.getElementById("pdfToImg").files[0];
+    if(!file) return alert("Select PDF");
+
+    const bytes=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+
+    const page=await pdf.getPage(1);
+    const viewport=page.getViewport({scale:1.5});
+
+    const canvas=document.createElement("canvas");
+    const ctx=canvas.getContext("2d");
+    canvas.width=viewport.width;
+    canvas.height=viewport.height;
+
+    await page.render({canvasContext:ctx,viewport:viewport}).promise;
+
+    document.getElementById("imgPreview").innerHTML="";
+    document.getElementById("imgPreview").appendChild(canvas);
+
+    canvas.toBlob(blob=>{
+        downloadBlob(blob,"converted.png");
+    });
+}
+
+// Image to PDF
+async function imageToPDF(){
+    const files=document.getElementById("imgToPdf").files;
+    if(!files.length) return alert("Select images");
+
+    const pdf=await PDFDocument.create();
+
+    for(let file of files){
+        const imgBytes=await file.arrayBuffer();
+        let img;
+        if(file.type==="image/jpeg")
+            img=await pdf.embedJpg(imgBytes);
+        else
+            img=await pdf.embedPng(imgBytes);
+
+        const page=pdf.addPage([img.width,img.height]);
+        page.drawImage(img,{x:0,y:0,width:img.width,height:img.height});
+    }
+
+    const pdfBytes=await pdf.save();
+    downloadFile(pdfBytes,"images.pdf");
+}
+
+// Download helpers
+function downloadFile(bytes,name){
+    const blob=new Blob([bytes],{type:"application/pdf"});
+    downloadBlob(blob,name);
+}
+function downloadBlob(blob,name){
+    const link=document.createElement("a");
+    link.href=URL.createObjectURL(blob);
+    link.download=name;
+    link.click();
+}
+</script>
+
+</body>
+</html>
